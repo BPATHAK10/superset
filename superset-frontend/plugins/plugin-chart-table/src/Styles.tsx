@@ -94,17 +94,103 @@ export default styled.div`
     }
 
     .dt-pagination {
-      text-align: right;
-      /* use padding instead of margin so clientHeight can capture it */
-      padding-top: 0.5em;
+      text-align: center;
+      padding: ${theme.gridUnit * 3}px ${theme.gridUnit * 4}px;
+      background-color: ${theme.colors.grayscale.light5};
+      border-top: 1px solid ${theme.colors.grayscale.light2};
+      min-height: ${theme.gridUnit * 12}px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .dt-pagination .pagination {
-      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: ${theme.gridUnit}px;
     }
 
-    .pagination > li > span.dt-pagination-ellipsis:focus,
-    .pagination > li > span.dt-pagination-ellipsis:hover {
-      background: ${theme.colors.grayscale.light5};
+    .dt-pagination .pagination > li {
+      display: inline-block;
+    }
+
+    .dt-pagination .pagination > li > a,
+    .dt-pagination .pagination > li > span {
+      color: ${theme.colors.grayscale.dark1};
+      background-color: ${theme.colors.grayscale.light5};
+      border: 1px solid ${theme.colors.grayscale.light2};
+      padding: ${theme.gridUnit * 1.5}px ${theme.gridUnit * 2.5}px;
+      margin: 0;
+      border-radius: ${theme.borderRadius}px;
+      font-size: ${theme.typography.sizes.s}px;
+      font-weight: ${theme.typography.weights.normal};
+      line-height: 1.4;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: ${theme.gridUnit * 8}px;
+      min-height: ${theme.gridUnit * 8}px;
+      transition: all ${theme.transitionTiming}s ease;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .dt-pagination .pagination > li > a:hover,
+    .dt-pagination .pagination > li > a:focus {
+      color: ${theme.colors.primary.dark1};
+      background-color: ${theme.colors.primary.light4};
+      border-color: ${theme.colors.primary.light2};
+      text-decoration: none;
+      outline: none;
+      box-shadow: 0 0 0 2px ${theme.colors.primary.light3}60;
+      transform: translateY(-1px);
+    }
+
+    .dt-pagination .pagination > li.active > a,
+    .dt-pagination .pagination > li.active > span {
+      color: ${theme.colors.grayscale.light5};
+      background-color: ${theme.colors.primary.base};
+      border-color: ${theme.colors.primary.base};
+      font-weight: ${theme.typography.weights.medium};
+      box-shadow: 0 2px 4px ${theme.colors.primary.base}40;
+    }
+
+    .dt-pagination .pagination > li.active > a:hover {
+      color: ${theme.colors.grayscale.light5};
+      background-color: ${theme.colors.primary.dark1};
+      border-color: ${theme.colors.primary.dark1};
+    }
+
+    .dt-pagination .pagination > li.disabled > a,
+    .dt-pagination .pagination > li.disabled > span {
+      color: ${theme.colors.grayscale.light1};
+      background-color: ${theme.colors.grayscale.light4};
+      border-color: ${theme.colors.grayscale.light3};
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .dt-pagination .pagination > li.disabled > a:hover {
+      color: ${theme.colors.grayscale.light1};
+      background-color: ${theme.colors.grayscale.light4};
+      border-color: ${theme.colors.grayscale.light3};
+      box-shadow: none;
+    }
+
+    .dt-pagination .pagination > li > span.dt-pagination-ellipsis {
+      background: transparent;
+      border: none;
+      color: ${theme.colors.grayscale.base};
+      cursor: default;
+      padding: ${theme.gridUnit * 1.5}px ${theme.gridUnit}px;
+    }
+
+    .dt-pagination .pagination > li > span.dt-pagination-ellipsis:hover,
+    .dt-pagination .pagination > li > span.dt-pagination-ellipsis:focus {
+      background: transparent;
+      border: none;
+      color: ${theme.colors.grayscale.base};
+      box-shadow: none;
     }
 
     .dt-no-results {
