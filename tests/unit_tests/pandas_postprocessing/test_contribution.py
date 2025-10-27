@@ -124,3 +124,80 @@ def test_contribution_with_time_shift_columns():
     assert_array_equal(processed_df["a__1 week ago"].tolist(), [0.5, 0.5])
     assert_array_equal(processed_df["b__1 week ago"].tolist(), [0.25, 0.25])
     assert_array_equal(processed_df["c__1 week ago"].tolist(), [0.25, 0.25])
+
+
+def test_contribution_with_row_limit_mode():
+    """Test percentage calculation with row_limit mode (default behavior)"""
+    df = DataFrame(
+        {
+            "category": ["A", "B", "C"],
+            "sales": [100, 200, 300],
+        }
+    )
+    # Default mode (row_limit) - percentages based on current df
+    processed_df = contribution(
+        df,
+        orientation=PostProcessingContributionOrientation.COLUMN,
+        columns=["sales"],
+        rename_columns=["pct_sales"],
+        percentage_calculation_mode="row_limit",
+    )
+    assert processed_df.columns.tolist() == ["category", "sales", "pct_sales"]
+    # Total is 600, so percentages are 100/600, 200/600, 300/600
+    assert_array_equal(
+        processed_df["pct_sales"].tolist(), [100 / 600, 200 / 600, 300 / 600]
+    )
+
+
+def test_contribution_with_all_records_mode():
+    """Test percentage calculation with all_records mode using provided totals"""
+    df = DataFrame(
+        {
+            "category": ["A", "B", "C"],
+            "sales": [100, 200, 300],
+        }
+    )
+    # all_records mode with totals from full dataset
+    # Simulate that total sales across ALL records is 10000
+    totals = {"sales": 10000.0}
+    processed_df = contribution(
+        df,
+        orientation=PostProcessingContributionOrientation.COLUMN,
+        columns=["sales"],
+        rename_columns=["pct_sales"],
+        totals=totals,
+        percentage_calculation_mode="all_records",
+    )
+    assert processed_df.columns.tolist() == ["category", "sales", "pct_sales"]
+    # Percentages based on total of 10000
+    assert_array_equal(
+        processed_df["pct_sales"].tolist(), [100 / 10000, 200 / 10000, 300 / 10000]
+    )
+
+
+def test_contribution_with_totals_multiple_columns():
+    """Test percentage calculation with totals for multiple columns"""
+    df = DataFrame(
+        {
+            "category": ["A", "B"],
+            "sales": [100, 200],
+            "profit": [10, 20],
+        }
+    )
+    totals = {"sales": 1000.0, "profit": 100.0}
+    processed_df = contribution(
+        df,
+        orientation=PostProcessingContributionOrientation.COLUMN,
+        columns=["sales", "profit"],
+        rename_columns=["pct_sales", "pct_profit"],
+        totals=totals,
+    )
+    assert processed_df.columns.tolist() == [
+        "category",
+        "sales",
+        "profit",
+        "pct_sales",
+        "pct_profit",
+    ]
+    assert_array_equal(processed_df["pct_sales"].tolist(), [100 / 1000, 200 / 1000])
+    assert_array_equal(processed_df["pct_profit"].tolist(), [10 / 100, 20 / 100])
