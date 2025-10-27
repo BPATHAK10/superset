@@ -37,6 +37,8 @@ def contribution(
     columns: list[str] | None = None,
     time_shifts: list[str] | None = None,
     rename_columns: list[str] | None = None,
+    totals: dict[str, float] | None = None,
+    percentage_calculation_mode: str | None = None,
 ) -> DataFrame:
     """
     Calculate cell contribution to row/column total for numeric columns.
@@ -52,6 +54,8 @@ def contribution(
     :param rename_columns: The new labels for the calculated contribution columns.
                            The original columns will not be removed.
     :param orientation: calculate by dividing cell with row/column total
+    :param totals: Optional dict of column totals for "all_records" mode
+    :param percentage_calculation_mode: "row_limit" or "all_records" mode
     :return: DataFrame with contributions.
     """
     contribution_df = df.copy()
@@ -82,10 +86,20 @@ def contribution(
     numeric_df_view = numeric_df[actual_columns]
 
     if orientation == PostProcessingContributionOrientation.COLUMN:
-        numeric_df_view = numeric_df_view / numeric_df_view.values.sum(
-            axis=0, keepdims=True
-        )
-        contribution_df[rename_columns] = numeric_df_view
+        if totals:
+            # All Records mode
+            for idx, col in enumerate(actual_columns):
+                total = totals.get(col, numeric_df_view[col].sum())
+                # Convert to Decimal if needed to match DataFrame dtype
+                if isinstance(numeric_df_view[col].iloc[0] if len(numeric_df_view[col]) > 0 else 0, Decimal):
+                    total = Decimal(str(total))
+                contribution_df[rename_columns[idx]] = numeric_df_view[col] / total
+        else:
+            # Row Limit mode
+            numeric_df_view = numeric_df_view / numeric_df_view.values.sum(
+                axis=0, keepdims=True
+            )
+            contribution_df[rename_columns] = numeric_df_view
         return contribution_df
 
     result = get_column_groups(numeric_df_view, time_shifts, rename_columns)

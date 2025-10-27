@@ -917,6 +917,15 @@ class ChartDataPostProcessingOperationSchema(Schema):
         },
     )
 
+    percentage_calculation_mode = fields.String(
+        metadata={
+            "description": "Mode for calculating percentage metrics",
+            "example": "row_limit",
+        },
+        validate=validate.OneOf(choices=["row_limit", "all_records"]),
+        load_default="row_limit",
+    )
+
 
 class ChartDataFilterSchema(Schema):
     col = fields.Raw(

@@ -282,6 +282,9 @@ class QueryContextProcessor:
                 query += ";\n\n".join(queries)
                 query += ";\n\n"
 
+            # Inject totals for "all_records" percentage calculation mode
+            self._inject_percentage_totals(query_object, df)
+
             # Re-raising QueryObjectValidationError
             try:
                 df = query_object.exec_post_processing(df)
@@ -903,6 +906,70 @@ class QueryContextProcessor:
             return {"records": payload["queries"][0]["data"]}
         except SupersetException as ex:
             raise QueryObjectValidationError(error_msg_from_exception(ex)) from ex
+
+    def _inject_percentage_totals(
+        self, query_object: QueryObject, df: pd.DataFrame
+    ) -> None:
+        """
+        Inject totals into contribution post-processing operation when
+        percentage_calculation_mode is 'all_records'.
+        
+        :param query_object: The query object being processed
+        :param df: The current DataFrame (with row_limit applied)
+        """
+        # Check if there's a contribution operation with all_records mode
+        for post_process in query_object.post_processing:
+            if post_process.get("operation") == "contribution":
+                options = post_process.get("options", {})
+                mode = options.get("percentage_calculation_mode", "row_limit")
+                
+                if mode == "all_records":
+                    # Get numeric columns that will be used for contribution
+                    columns = options.get("columns") or []
+                    if not columns:
+                        # If no columns specified, use all numeric columns
+                        columns = df.select_dtypes(include=["number"]).columns.tolist()
+                    
+                    # Calculate totals from the full dataset
+                    totals = self._fetch_metric_totals(query_object, columns)
+                    
+                    # Inject totals into the operation options
+                    options["totals"] = totals
+
+    def _fetch_metric_totals(
+        self, query_object: QueryObject, metric_columns: list[str]
+    ) -> dict[str, float]:
+        """
+        Execute a query to get totals for specified metrics without row limit.
+        
+        :param query_object: The original query object
+        :param metric_columns: List of metric column names to sum
+        :return: Dictionary mapping column names to their totals
+        """
+        query_context = self._query_context
+        
+        # Create a modified query dict for totals calculation
+        query_dict = query_object.to_dict()
+        
+        # Remove row limit , offset and group by columns
+        query_dict["row_limit"] = None
+        query_dict["row_offset"] = None
+        query_dict["columns"] = []
+        
+        # Execute the optimized aggregation query
+        if isinstance(query_context.datasource, Query):
+            result = query_context.datasource.exc_query(query_dict)
+        else:
+            result = query_context.datasource.query(query_dict)
+        
+        # Extract totals from the single result row
+        totals = {}
+        if not result.df.empty:
+            for col in metric_columns:
+                if col in result.df.columns:
+                    totals[col] = float(result.df[col].iloc[0])
+        
+        return totals
 
     def raise_for_access(self) -> None:
         """
