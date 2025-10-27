@@ -151,6 +151,7 @@ const buildQuery: BuildQuery<TableChartFormData> = (
             options: {
               columns: percentMetricLabels,
               rename_columns: percentMetricLabels.map(x => `%${x}`),
+              percentage_calculation_mode: formData.percentage_calculation_mode,
             },
           },
         ];

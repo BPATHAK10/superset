@@ -97,6 +97,7 @@ interface _PostProcessingContribution {
     orientation?: 'row' | 'column';
     columns?: string[];
     rename_columns?: string[];
+    percentage_calculation_mode?: 'row_limit' | 'all_records';
   };
 }
 export type PostProcessingContribution =

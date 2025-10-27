@@ -236,3 +236,75 @@ def test_get_data_xlsx_apply_column_types_error(
     mock_query_context.result_format = ChartDataResultFormat.XLSX
     with pytest.raises(ValueError, match="Conversion error"):
         processor.get_data(df, coltypes)
+
+
+def test_inject_percentage_totals_row_limit_mode():
+    """Test that row_limit mode doesn't inject totals"""
+    from superset.common.query_object import QueryObject
+
+    mock_qc = MagicMock()
+    processor = QueryContextProcessor(mock_qc)
+
+    # Create a mock query object with contribution post-processing
+    query_object = MagicMock(spec=QueryObject)
+    query_object.post_processing = [
+        {
+            "operation": "contribution",
+            "options": {
+                "columns": ["sales"],
+                "percentage_calculation_mode": "row_limit",
+            },
+        }
+    ]
+
+    df = pd.DataFrame({"category": ["A", "B"], "sales": [100, 200]})
+
+    # Should not add totals for row_limit mode
+    processor._inject_percentage_totals(query_object, df)
+
+    # Verify totals were NOT injected
+    assert "totals" not in query_object.post_processing[0]["options"]
+
+
+def test_inject_percentage_totals_all_records_mode():
+    """Test that all_records mode injects totals"""
+    from superset.common.query_object import QueryObject
+    from superset.models.helpers import QueryResult
+
+    mock_qc = MagicMock()
+    mock_datasource = MagicMock()
+
+    # Mock the query result with totals
+    mock_result = MagicMock(spec=QueryResult)
+    mock_result.df = pd.DataFrame({"sales": [1000.0]})  # Total from all records
+    mock_datasource.query.return_value = mock_result
+
+    mock_qc.datasource = mock_datasource
+    processor = QueryContextProcessor(mock_qc)
+
+    # Create a mock query object
+    query_object = MagicMock(spec=QueryObject)
+    query_object.post_processing = [
+        {
+            "operation": "contribution",
+            "options": {
+                "columns": ["sales"],
+                "percentage_calculation_mode": "all_records",
+            },
+        }
+    ]
+    query_object.to_dict.return_value = {
+        "columns": ["category"],
+        "metrics": ["sales"],
+        "row_limit": 10,
+    }
+
+    df = pd.DataFrame({"category": ["A", "B"], "sales": [100, 200]})
+
+    # Should inject totals for all_records mode
+    processor._inject_percentage_totals(query_object, df)
+
+    # Verify totals were injected
+    assert "totals" in query_object.post_processing[0]["options"]
+    assert query_object.post_processing[0]["options"]["totals"] == {"sales": 1000.0}
+
