@@ -75,3 +75,20 @@ test('should render 3 elements when maxTags is set to 3', async () => {
   expect(tagsListItems).toHaveLength(3);
   expect(tagsListItems[2]).toHaveTextContent('+3...');
 });
+
+test('should sort tags alphabetically (case-insensitive)', async () => {
+  const unsortedTags = [
+    { name: 'Zebra', id: 1 },
+    { name: 'apple', id: 2 },
+    { name: 'Marketing', id: 3 },
+    { name: 'beta', id: 4 },
+  ];
+  render(<TagsList tags={unsortedTags} />);
+  const tagsListItems = await findAllTags();
+  expect(tagsListItems).toHaveLength(4);
+  // Verify alphabetical order: apple, beta, Marketing, Zebra
+  expect(tagsListItems[0]).toHaveTextContent('apple');
+  expect(tagsListItems[1]).toHaveTextContent('beta');
+  expect(tagsListItems[2]).toHaveTextContent('Marketing');
+  expect(tagsListItems[3]).toHaveTextContent('Zebra');
+});
