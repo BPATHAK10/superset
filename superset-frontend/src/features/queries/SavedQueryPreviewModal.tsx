@@ -25,6 +25,7 @@ import withToasts, {
   ToastProps,
 } from 'src/components/MessageToasts/withToasts';
 import useQueryPreviewState from 'src/features/queries/hooks/useQueryPreviewState';
+import { SavedQueryObject } from 'src/views/CRUD/types';
 
 const QueryTitle = styled.div`
   color: ${({ theme }) => theme.colors.secondary.light2};
@@ -52,13 +53,8 @@ const StyledModal = styled(Modal)`
   }
 `;
 
-type SavedQueryObject = {
-  id: number;
-  label: string;
-  sql: string;
-};
-
 interface SavedQueryPreviewModalProps extends ToastProps {
+  copySavedQueryPermalink: (savedQuery: SavedQueryObject) => Promise<void>;
   fetchData: (id: number) => {};
   onHide: () => void;
   openInSqlLab: (id: number, openInNewWindow: boolean) => {};
@@ -70,6 +66,7 @@ interface SavedQueryPreviewModalProps extends ToastProps {
 const SavedQueryPreviewModal: FunctionComponent<
   SavedQueryPreviewModalProps
 > = ({
+  copySavedQueryPermalink,
   fetchData,
   onHide,
   openInSqlLab,
@@ -114,9 +111,17 @@ const SavedQueryPreviewModal: FunctionComponent<
               data-test="open-in-sql-lab"
               key="open-in-sql-lab"
               buttonStyle="primary"
-              onClick={({ metaKey }) =>
-                openInSqlLab(savedQuery.id, Boolean(metaKey))
-              }
+              onClick={async ({ metaKey }) => {
+                try {
+                  // Copy permalink before navigation
+                  await copySavedQueryPermalink(savedQuery);
+                } catch {
+                  // Even if copy fails, still navigate
+                } finally {
+                  // Always open in SQL Lab
+                  openInSqlLab(savedQuery.id, Boolean(metaKey));
+                }
+              }}
             >
               {t('Open in SQL Lab')}
             </Button>
