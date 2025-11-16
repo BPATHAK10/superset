@@ -44,12 +44,23 @@ from superset.views.database.validators import schema_allows_file_upload
 logger = logging.getLogger(__name__)
 
 READ_CHUNK_SIZE = 1000
+MAX_ERRORS_TO_SHOW = 5
 
 
 class UploadFileType(StrEnum):
     CSV = "csv"
     EXCEL = "excel"
     COLUMNAR = "columnar"
+
+
+class DataTypeError(TypedDict):
+    """Structure for detailed data type conversion errors."""
+
+    column: str
+    expected_type: str
+    invalid_value: str
+    line_number: int
+    error_message: str
 
 
 class ReaderOptions(TypedDict, total=False):

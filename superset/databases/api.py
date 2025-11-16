@@ -42,6 +42,7 @@ from superset.commands.database.exceptions import (
     DatabaseInvalidError,
     DatabaseNotFoundError,
     DatabaseUpdateFailedError,
+    DatabaseUploadFailed,
     InvalidParametersError,
 )
 from superset.commands.database.export import ExportDatabasesCommand
@@ -1768,6 +1769,9 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
                 parameters.get("schema"),
                 reader,
             ).run()
+        except DatabaseUploadFailed as ex:
+            # The exception message contains detailed error information
+            return self.response_422(message=str(ex.message))
         except ValidationError as error:
             return self.response_400(message=error.messages)
         return self.response(201, message="OK")
