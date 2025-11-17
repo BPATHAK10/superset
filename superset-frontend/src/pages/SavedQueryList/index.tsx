@@ -280,6 +280,75 @@ function SavedQueryList({
     [addDangerToast, addSuccessToast],
   );
 
+  
+  //Helper function to copy saved query permalink to clipboard.
+  const copySavedQueryPermalink = useCallback(
+    async (savedQuery: SavedQueryObject): Promise<void> => {
+      let permalink: string | null = null;
+      
+      try {
+        // Get db_id from either db_id field or database.id
+        const dbId = savedQuery.db_id || savedQuery.database?.id;
+        
+        // Validate required fields before making API call
+        if (!dbId) {
+          throw new Error('Missing database ID');
+        }
+        if (!savedQuery.label) {
+          throw new Error('Missing query name');
+        }
+        if (!savedQuery.sql) {
+          throw new Error('Missing SQL query');
+        }
+
+        // Step 1: Generate permalink via API
+        const payload = {
+          dbId,
+          name: savedQuery.label,
+          schema: savedQuery.schema || '',
+          catalog: savedQuery.catalog || null,
+          sql: savedQuery.sql,
+          autorun: false,
+          templateParams: null,
+        };
+
+        const response = await SupersetClient.post({
+          endpoint: '/api/v1/sqllab/permalink',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        permalink = response.json.url;
+
+        // Step 2: Copy to clipboard
+        if (permalink) {
+          await navigator.clipboard.writeText(permalink);
+          addSuccessToast(t('Link Copied!'));
+        }
+      } catch (error) {
+        // Differentiate between API errors and clipboard errors
+        if (permalink === null) {
+          // API error - permalink generation failed
+          const errorMessage = error instanceof Error ? error.message : '';
+          console.error('Permalink generation failed:', errorMessage, savedQuery);
+          addDangerToast(
+            t('Unable to generate shareable link. Please try again.'),
+          );
+        } else {
+          // Clipboard error - permalink was generated but copy failed
+          addDangerToast(
+            t(
+              'Link generated but clipboard copy failed. Please copy manually from the address bar.',
+            ),
+          );
+        }
+        // Re-throw error so calling code knows the operation failed
+        throw error;
+      }
+    },
+    [addDangerToast, addSuccessToast],
+  );
+
   const handleQueryDelete = ({ id, label }: SavedQueryObject) => {
     SupersetClient.delete({
       endpoint: `/api/v1/saved_query/${id}`,
@@ -331,9 +400,38 @@ function SavedQueryList({
         Header: t('Name'),
         Cell: ({
           row: {
-            original: { id, label },
+            original,
           },
-        }: any) => <Link to={`/sqllab?savedQueryId=${id}`}>{label}</Link>,
+        }: any) => {
+          const handleQueryNameClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+            e.preventDefault();
+            const openInNewWindow = e.metaKey || e.ctrlKey;
+            try {
+              // Copy permalink before navigation
+              await copySavedQueryPermalink(original);
+            } catch {
+              // Even if copy fails, still navigate
+            } finally {
+              // Always navigate
+              openInSqlLab(original.id, openInNewWindow);
+            }
+          };
+
+          return (
+            <a
+              href={`/sqllab?savedQueryId=${original.id}`}
+              onClick={handleQueryNameClick}
+              css={css`
+                text-decoration: none;
+                &:hover {
+                  text-decoration: underline;
+                }
+              `}
+            >
+              {original.label}
+            </a>
+          );
+        },
       },
       {
         accessor: 'description',
@@ -424,8 +522,17 @@ function SavedQueryList({
           const handlePreview = () => {
             handleSavedQueryPreview(original.id);
           };
-          const handleEdit = ({ metaKey }: MouseEvent) =>
-            openInSqlLab(original.id, Boolean(metaKey));
+          const handleEdit = async ({ metaKey }: MouseEvent) => {
+            try {
+              // Copy permalink to clipboard before navigating
+              await copySavedQueryPermalink(original);
+            } catch {
+              // Even if copy fails, still navigate to SQL Lab
+            } finally {
+              // Always open in SQL Lab
+              openInSqlLab(original.id, Boolean(metaKey));
+            }
+          };
           const handleCopy = () => copyQueryLink(original);
           const handleExport = () => handleBulkSavedQueryExport([original]);
           const handleDelete = () => setQueryCurrentlyDeleting(original);
@@ -479,7 +586,15 @@ function SavedQueryList({
         hidden: true,
       },
     ],
-    [canDelete, canEdit, canExport, copyQueryLink, handleSavedQueryPreview],
+    [
+      canDelete,
+      canEdit,
+      canExport,
+      copyQueryLink,
+      copySavedQueryPermalink,
+      handleSavedQueryPreview,
+      openInSqlLab,
+    ],
   );
 
   const filters: Filters = useMemo(
@@ -593,6 +708,7 @@ function SavedQueryList({
           savedQuery={savedQueryCurrentlyPreviewing}
           queries={queries}
           openInSqlLab={openInSqlLab}
+          copySavedQueryPermalink={copySavedQueryPermalink}
           show
         />
       )}
