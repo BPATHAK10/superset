@@ -73,11 +73,6 @@ export const Databases = [
     imgName: 'clickhouse.png',
   },
   {
-    title: 'Rockset',
-    href: 'https://rockset.com/',
-    imgName: 'rockset.png',
-  },
-  {
     title: 'Dremio',
     href: 'https://dremio.com/',
     imgName: 'dremio.png',

@@ -1050,7 +1050,6 @@ def test_custom_dialect(app: None) -> None:
         "pydoris",
         "redshift",
         "risingwave",
-        "rockset",
         "shillelagh",
         "snowflake",
         "solr",
