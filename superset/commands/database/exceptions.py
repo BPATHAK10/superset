@@ -14,6 +14,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from typing import Any
+
 from flask_babel import lazy_gettext as _
 from marshmallow.validate import ValidationError
 
@@ -116,6 +118,28 @@ class DatabaseUploadNotSupported(CommandException):
 class DatabaseUploadFailed(CommandException):
     status = 422
     message = _("Database upload file failed")
+
+    def __init__(
+        self,
+        message: str | None = None,
+        exception: Exception | None = None,
+        type_errors: list[dict[str, Any]] | None = None,
+        total_errors: int | None = None,
+    ) -> None:
+        """
+        Exception for database upload failures.
+
+        :param message: Custom error message (optional)
+        :param exception: Original exception that caused the failure (optional)
+        :param type_errors: List of detailed type conversion errors (optional)
+        :param total_errors: Total number of errors found (optional)
+        """
+        if message:
+            self.message = message
+        self._exception = exception
+        self.type_errors = type_errors or []
+        self.total_errors = total_errors
+        super().__init__()
 
 
 class DatabaseUploadSaveMetadataFailed(CommandException):
