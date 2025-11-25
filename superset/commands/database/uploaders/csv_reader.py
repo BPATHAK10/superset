@@ -62,6 +62,29 @@ class CSVReader(BaseDataReader):
         )
 
     @staticmethod
+    def _validate_single_value(value: str, expected_type: str) -> tuple[bool, str]:
+        """
+        Validate a single value against expected type.
+
+        :param value: String value to validate
+        :param expected_type: Expected data type
+        :return: Tuple of (is_valid, error_message)
+        """
+        try:
+            if expected_type in ("int64", "Int64", "integer", "int"):
+                int(value)
+            elif expected_type in ("float64", "Float64", "float"):
+                float(value)
+            elif expected_type == "bool":
+                if str(value).lower() not in ("true", "false", "0", "1"):
+                    raise ValueError(f"Cannot convert '{value}' to boolean")
+            elif "datetime" in expected_type.lower() or expected_type == "date":
+                pd.to_datetime(value)
+            return True, ""
+        except (ValueError, TypeError) as e:
+            return False, str(e)
+
+    @staticmethod
     def _validate_column_types(
         df: pd.DataFrame,
         column_data_types: dict[str, str],
@@ -70,65 +93,186 @@ class CSVReader(BaseDataReader):
     ) -> tuple[list[DataTypeError], int]:
         """
         Validate column data types and collect detailed errors.
-        
+
         :param df: DataFrame with columns read as strings
         :param column_data_types: Expected types for columns
         :param skip_rows: Number of rows skipped at file start
         :param header_row: Header row position
-        :return: Tuple of (list of errors up to MAX_ERRORS_TO_SHOW, total error count)
+        :return: Tuple of (errors list, total error count)
         """
-        from superset.commands.database.uploaders.base import MAX_ERRORS_TO_SHOW
-        
+        from superset.commands.database.uploaders.base import (
+            MAX_ERRORS_TO_SHOW,
+        )
+
         errors: list[DataTypeError] = []
         total_errors = 0
-        
+
         for column, expected_type in column_data_types.items():
             if column not in df.columns:
                 continue
-                
+
             for idx, value in enumerate(df[column]):
                 # Skip null/empty values
                 if pd.isna(value) or value == "":
                     continue
 
-                is_valid = True
-                error_msg = ""
-                
-                try:
-                    if expected_type in ("int64", "Int64", "integer", "int"):
-                        int(value)
-                    elif expected_type in ("float64", "Float64", "float"):
-                        float(value)
-                    elif expected_type == "bool":
-                        if str(value).lower() not in ("true", "false", "0", "1"):
-                            raise ValueError(f"Cannot convert '{value}' to boolean")
-                    elif "datetime" in expected_type.lower() or expected_type == "date":
-                        pd.to_datetime(value)
-                    # For other types, we assume they're valid
-                except (ValueError, TypeError) as e:
-                    is_valid = False
-                    error_msg = str(e)
-                
+                is_valid, error_msg = CSVReader._validate_single_value(
+                    value, expected_type
+                )
+
                 if not is_valid:
                     total_errors += 1
-                    
+
                     # Only collect up to MAX_ERRORS_TO_SHOW
                     if len(errors) < MAX_ERRORS_TO_SHOW:
                         # Calculate actual line number in file
-                        # idx is 0-based row in dataframe
                         line_number = skip_rows + header_row + idx + 2
-                        
+
                         errors.append(
                             DataTypeError(
                                 column=column,
                                 expected_type=expected_type,
                                 invalid_value=str(value),
                                 line_number=line_number,
-                                error_message=error_msg or f"Could not convert to {expected_type}",
+                                error_message=error_msg
+                                or f"Could not convert to {expected_type}",
                             )
                         )
-        
+
         return errors, total_errors
+
+        return errors, total_errors
+
+    @staticmethod
+    def _prepare_kwargs_for_pandas(
+        kwargs: dict[str, Any], column_data_types: dict[str, str] | None
+    ) -> None:
+        """
+        Modify kwargs to handle datetime columns with parse_dates.
+
+        :param kwargs: pandas read_csv kwargs (modified in-place)
+        :param column_data_types: Expected types for columns
+        """
+        if not column_data_types:
+            return
+
+        dtype_for_pandas = {}
+        datetime_columns = []
+
+        for col, dtype in column_data_types.items():
+            if dtype in ("datetime", "datetime64", "date"):
+                datetime_columns.append(col)
+            else:
+                dtype_for_pandas[col] = dtype
+
+        # Update kwargs with filtered dtype
+        if dtype_for_pandas:
+            kwargs["dtype"] = dtype_for_pandas
+        else:
+            kwargs.pop("dtype", None)
+
+        # Add datetime columns to parse_dates
+        if datetime_columns:
+            parse_dates = kwargs.get("parse_dates", [])
+            if isinstance(parse_dates, list):
+                parse_dates = list(set(parse_dates + datetime_columns))
+                kwargs["parse_dates"] = parse_dates
+
+    @staticmethod
+    def _check_datetime_validity(
+        df: pd.DataFrame, column_data_types: dict[str, str] | None
+    ) -> None:
+        """
+        Check for invalid datetime values (NaT) in datetime columns.
+
+        :param df: DataFrame to check
+        :param column_data_types: Expected types for columns
+        :raises ValueError: If invalid datetime values detected
+        """
+        if not column_data_types:
+            return
+
+        datetime_cols = [
+            col
+            for col, dtype in column_data_types.items()
+            if dtype in ("datetime", "datetime64", "date")
+        ]
+
+        if not datetime_cols:
+            return
+
+        for col in datetime_cols:
+            if col in df.columns and df[col].isna().any():
+                raise ValueError("Invalid datetime values detected")
+
+    @staticmethod
+    def _collect_detailed_errors(
+        file: FileStorage,
+        kwargs: dict[str, Any],
+        column_data_types: dict[str, str],
+        skip_rows: int,
+        header_row: int,
+        original_ex: Exception,
+    ) -> None:
+        """
+        Re-read CSV and collect detailed type conversion errors.
+
+        :param file: File to read
+        :param kwargs: Original read_csv kwargs
+        :param column_data_types: Expected types for columns
+        :param skip_rows: Number of rows skipped
+        :param header_row: Header row position
+        :param original_ex: Original exception that triggered this
+        :raises DatabaseUploadFailed: With detailed error message
+        """
+        # Reset file stream to beginning
+        file.stream.seek(0)
+
+        # Re-read CSV as strings to validate types manually
+        kwargs_no_dtype = kwargs.copy()
+        kwargs_no_dtype.pop("dtype", None)
+        kwargs_no_dtype.pop("parse_dates", None)
+        kwargs_no_dtype["dtype"] = str
+        kwargs_no_dtype["keep_default_na"] = False
+
+        if "chunksize" in kwargs_no_dtype:
+            df_str = pd.concat(
+                pd.read_csv(
+                    filepath_or_buffer=file.stream,
+                    **kwargs_no_dtype,
+                )
+            )
+        else:
+            df_str = pd.read_csv(
+                filepath_or_buffer=file.stream,
+                **kwargs_no_dtype,
+            )
+
+        # Validate types and collect errors
+        errors, total_errors = CSVReader._validate_column_types(
+            df_str, column_data_types, skip_rows, header_row
+        )
+
+        if errors:
+            # Build error message with details
+            error_header = (
+                f"Data type conversion errors found "
+                f"({total_errors} total, showing {len(errors)}):\n"
+            )
+            error_details = "\n".join(
+                [
+                    f"  • Line {error['line_number']}: "
+                    f"Column '{error['column']}' - "
+                    f"Expected {error['expected_type']}, "
+                    f"got '{error['invalid_value']}' "
+                    f"({error['error_message']})"
+                    for error in errors
+                ]
+            )
+            raise DatabaseUploadFailed(
+                message=error_header + error_details,
+                exception=original_ex,
+            ) from original_ex
 
     @staticmethod
     def _read_csv(file: FileStorage, kwargs: dict[str, Any]) -> pd.DataFrame:
@@ -136,31 +280,9 @@ class CSVReader(BaseDataReader):
         column_data_types = kwargs.get("dtype")
         skip_rows = kwargs.get("skiprows", 0)
         header_row = kwargs.get("header", 0)
-        
-        # Datetime columns should use parse_dates instead
-        # Filter out datetime types from dtype dict before passing to pandas
-        if column_data_types:
-            dtype_for_pandas = {}
-            datetime_columns = []
-            
-            for col, dtype in column_data_types.items():
-                if dtype in ('datetime', 'datetime64', 'date'):
-                    datetime_columns.append(col)
-                else:
-                    dtype_for_pandas[col] = dtype
-            
-            # Update kwargs with filtered dtype
-            if dtype_for_pandas:
-                kwargs["dtype"] = dtype_for_pandas
-            else:
-                kwargs.pop("dtype", None)
-            
-            # Add datetime columns to parse_dates if not already there
-            if datetime_columns:
-                parse_dates = kwargs.get("parse_dates", [])
-                if isinstance(parse_dates, list):
-                    parse_dates = list(set(parse_dates + datetime_columns))
-                    kwargs["parse_dates"] = parse_dates
+
+        # Prepare kwargs for pandas (handle datetime columns)
+        CSVReader._prepare_kwargs_for_pandas(kwargs, column_data_types)
 
         try:
             if "chunksize" in kwargs:
@@ -175,26 +297,10 @@ class CSVReader(BaseDataReader):
                     filepath_or_buffer=file.stream,
                     **kwargs,
                 )
-            
-            # For datetime columns, pandas parse_dates silently converts invalid dates to NaT
-            if column_data_types:
-                datetime_cols = [
-                    col for col, dtype in column_data_types.items()
-                    if dtype in ('datetime', 'datetime64', 'date')
-                ]
-                
-                if datetime_cols and any(col in df.columns for col in datetime_cols):
-                    # Check if we need to validate datetime columns
-                    needs_validation = False
-                    for col in datetime_cols:
-                        if col in df.columns:
-                            if df[col].isna().any():
-                                needs_validation = True
-                                break
-                    
-                    if needs_validation:
-                        raise ValueError("Invalid datetime values detected")
-            
+
+            # Check for invalid datetime values
+            CSVReader._check_datetime_validity(df, column_data_types)
+
             return df
         except (
             pd.errors.ParserError,
@@ -208,58 +314,23 @@ class CSVReader(BaseDataReader):
             # ValueError is raised for dtype conversion errors
             if column_data_types:
                 try:
-                    # Reset file stream to beginning
-                    file.stream.seek(0)
-                    
-                    # Re-read CSV as strings to validate types manually
-                    kwargs_no_dtype = kwargs.copy()
-                    kwargs_no_dtype.pop("dtype", None)
-                    kwargs_no_dtype.pop("parse_dates", None)  # Don't parse dates
-                    kwargs_no_dtype["dtype"] = str  # Read all as strings
-                    kwargs_no_dtype["keep_default_na"] = False
-                    
-                    if "chunksize" in kwargs_no_dtype:
-                        df_str = pd.concat(
-                            pd.read_csv(
-                                filepath_or_buffer=file.stream,
-                                **kwargs_no_dtype,
-                            )
-                        )
-                    else:
-                        df_str = pd.read_csv(
-                            filepath_or_buffer=file.stream,
-                            **kwargs_no_dtype,
-                        )
-                    
-                    # Validate types and collect errors
-                    errors, total_errors = CSVReader._validate_column_types(
-                        df_str, column_data_types, skip_rows, header_row
+                    CSVReader._collect_detailed_errors(
+                        file,
+                        kwargs,
+                        column_data_types,
+                        skip_rows,
+                        header_row,
+                        ex,
                     )
-                    
-                    if errors:
-                        # Build the error message as a string with all the detail about the errors
-                        error_header = f"Data type conversion errors found ({total_errors} total, showing {len(errors)}):\n"
-                        error_details = "\n".join(
-                            [
-                                f"  • Line {error['line_number']}: "
-                                f"Column '{error['column']}' - "
-                                f"Expected {error['expected_type']}, "
-                                f"got '{error['invalid_value']}' "
-                                f"({error['error_message']})"
-                                for error in errors
-                            ]
-                        )
-                        raise DatabaseUploadFailed(
-                            message=error_header + error_details,
-                            exception=ex,
-                        ) from ex
                 except DatabaseUploadFailed:
-                    # Re-raise exception 
+                    # Re-raise our enhanced exception
                     raise
-                except Exception:
-        
-                    pass
-            
+                except Exception as validation_ex:
+                    # If error collection itself fails, log and fall through
+                    logger.warning(
+                        "Failed to collect detailed errors: %s", validation_ex
+                    )
+
             # Fallback to generic error
             raise DatabaseUploadFailed(
                 message=_("Parsing error: %(error)s", error=str(ex))
