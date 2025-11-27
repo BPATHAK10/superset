@@ -157,6 +157,18 @@ const config: ControlPanelConfig = {
             },
           },
         ],
+        [
+          {
+            name: 'zoomable',
+            config: {
+              type: 'CheckboxControl',
+              label: t('Data Zoom'),
+              default: false,
+              renderTrigger: true,
+              description: t('Enable data zooming controls'),
+            },
+          },
+        ],
       ],
     },
   ],

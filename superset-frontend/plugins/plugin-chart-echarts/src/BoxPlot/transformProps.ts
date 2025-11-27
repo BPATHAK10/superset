@@ -39,7 +39,7 @@ import {
 import { convertInteger } from '../utils/convertInteger';
 import { defaultGrid, defaultYAxis } from '../defaults';
 import { getPadding } from '../Timeseries/transformers';
-import { OpacityEnum } from '../constants';
+import { OpacityEnum, TIMESERIES_CONSTANTS } from '../constants';
 import { getDefaultTooltip } from '../utils/tooltip';
 import { Refs } from '../types';
 
@@ -74,6 +74,7 @@ export default function transformProps(
     yAxisTitlePosition,
     sliceId,
   } = formData as BoxPlotQueryFormData;
+  const { zoomable = false } = formData as BoxPlotQueryFormData;
   const refs: Refs = {};
   const colorFn = CategoricalColorNamespace.getScale(colorScheme as string);
   const numberFormatter = getNumberFormatter(numberFormat);
@@ -247,7 +248,7 @@ export default function transformProps(
     true,
     legendOrientation,
     addYAxisTitleOffset,
-    false,
+    zoomable,
     null,
     addXAxisTitleOffset,
     yAxisTitlePosition,
@@ -283,6 +284,23 @@ export default function transformProps(
         type: 'shadow',
       },
     },
+    ...(zoomable && {
+      dataZoom: [
+        {
+          type: 'slider',
+          start: TIMESERIES_CONSTANTS.dataZoomStart,
+          end: TIMESERIES_CONSTANTS.dataZoomEnd,
+          bottom: TIMESERIES_CONSTANTS.zoomBottom,
+          xAxisIndex: 0,
+        },
+        {
+          type: 'inside',
+          xAxisIndex: 0,
+          zoomOnMouseWheel: false,
+          moveOnMouseWheel: true,
+        },
+      ],
+    }),
     series,
   };
 
